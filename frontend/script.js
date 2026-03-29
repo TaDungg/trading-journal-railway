@@ -182,8 +182,12 @@ async function loadTrades(from, to) {
     if (to) params.push(`to=${to}`);
     if (params.length) path += '?' + params.join('&');
     cachedTrades = await apiFetch(path);
-    // Normalize types: pnl comes as string from DB
-    cachedTrades = cachedTrades.map(t => ({ ...t, pnl: parseFloat(t.pnl) }));
+    // Normalize: pnl comes as string from DB, date comes as full ISO timestamp
+    cachedTrades = cachedTrades.map(t => ({
+      ...t,
+      pnl: parseFloat(t.pnl),
+      date: t.date ? t.date.substring(0, 10) : t.date,
+    }));
   } catch (err) {
     console.error('Failed to load trades:', err);
     cachedTrades = [];
