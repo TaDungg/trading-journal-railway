@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TradeLedger — Journal</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;600;700;800&display=swap"
+    rel="stylesheet" />
+</head>
+
+<body>
+  <!-- AUTH OVERLAY -->
+  <div id="auth-overlay" class="auth-overlay">
+    <div class="auth-box">
+      <div class="auth-logo">TradeLedger</div>
+      <div class="auth-tabs">
+        <button class="auth-tab active" data-tab="login">Login</button>
+        <button class="auth-tab" data-tab="register">Register</button>
+      </div>
+      <div id="auth-login" class="auth-form">
+        <input type="text" id="login-user" placeholder="Username" autocomplete="off" />
+        <input type="password" id="login-pass" placeholder="Password" />
+        <button class="btn-primary" onclick="authLogin()">Sign In</button>
+        <p class="auth-hint">Demo: <strong>demo</strong> / <strong>demo123</strong></p>
+      </div>
+      <div id="auth-register" class="auth-form hidden">
+        <input type="text" id="reg-user" placeholder="Username" autocomplete="off" />
+        <input type="password" id="reg-pass" placeholder="Password" />
+        <button class="btn-primary" onclick="authRegister()">Create Account</button>
+      </div>
+      <div id="auth-error" class="auth-error hidden"></div>
+    </div>
+  </div>
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-logo">TradeLedger</div>
+    <ul class="sidebar-nav">
+      <li><a href="dashboard.html" class="nav-item"><span class="nav-icon">⬛</span>Dashboard</a></li>
+      <li><a href="index.html" class="nav-item active"><span class="nav-icon">📅</span>Journal</a></li>
+    </ul>
+    <div class="sidebar-footer">
+      <span id="sidebar-user" class="sidebar-username"></span>
+      <button class="btn-ghost small" onclick="authLogout()">Logout</button>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="main-content" id="app">
+    <header class="page-header">
+      <div>
+        <h1 class="page-title">Trade Journal</h1>
+        <p class="page-sub" id="month-label">June 2024</p>
+      </div>
+      <div class="header-actions">
+        <button class="btn-ghost" onclick="exportCSV()">⬇ Export CSV</button>
+        <button class="btn-primary" onclick="openTradeModal()">+ Add Trade</button>
+        <button class="theme-toggle" onclick="toggleTheme()" title="Toggle dark mode">🌙</button>
+      </div>
+    </header>
+
+    <!-- MONTH STATS -->
+    <section class="stats-row" id="stats-row"></section>
+
+    <!-- CALENDAR CONTROLS -->
+    <div class="cal-controls">
+      <button class="btn-ghost arrow" onclick="changeMonth(-1)">←</button>
+      <span id="cal-month-label" class="cal-month-title"></span>
+      <button class="btn-ghost arrow" onclick="changeMonth(1)">→</button>
+    </div>
+
+    <!-- CALENDAR -->
+    <div class="calendar-wrapper">
+      <div class="calendar-grid" id="calendar-grid"></div>
+    </div>
+  </main>
+
+  <!-- TRADE MODAL -->
+  <div id="trade-modal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2 id="modal-title">Add Trade</h2>
+        <button class="modal-close" onclick="closeTradeModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <label>Date</label>
+          <input type="date" id="f-date" />
+        </div>
+        <div class="form-row">
+          <label>Direction</label>
+          <div class="type-toggle">
+            <button class="type-btn active" data-val="LONG" onclick="setType('LONG')">▲ LONG</button>
+            <button class="type-btn" data-val="SHORT" onclick="setType('SHORT')">▼ SHORT</button>
+          </div>
+          <input type="hidden" id="f-type" value="LONG" />
+        </div>
+        <div class="form-row">
+          <label>PnL ($)</label>
+          <input type="number" id="f-pnl" placeholder="e.g. 120.50 or -45.00" step="0.01" />
+        </div>
+        <div class="form-row">
+          <label>Grade</label>
+          <div class="grade-picker">
+            <button class="grade-btn" data-grade="A+" onclick="setGrade('A+')">A+</button>
+            <button class="grade-btn" data-grade="A" onclick="setGrade('A')">A</button>
+            <button class="grade-btn" data-grade="B" onclick="setGrade('B')">B</button>
+            <button class="grade-btn" data-grade="C" onclick="setGrade('C')">C</button>
+          </div>
+          <input type="hidden" id="f-grade" value="" />
+        </div>
+        <div class="form-row full">
+          <label>Notes</label>
+          <textarea id="f-notes" rows="2" placeholder="What went well? What to improve?"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-ghost" onclick="closeTradeModal()">Cancel</button>
+        <button class="btn-primary" onclick="saveTrade()">Save Trade</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DAY DETAIL MODAL -->
+  <div id="day-modal" class="modal-overlay hidden">
+    <div class="modal-box wide">
+      <div class="modal-header">
+        <h2 id="day-modal-title">Trades on …</h2>
+        <button class="modal-close" onclick="closeDayModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <table class="trade-table" id="day-trade-table">
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>PnL</th>
+              <th>Grade</th>
+              <th>Notes</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="day-trade-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+
+</html>
