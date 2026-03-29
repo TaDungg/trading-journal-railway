@@ -17,9 +17,7 @@ const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'tradeledger_secret_change_me';
 
 // ── MIDDLEWARE ──────────────────────────────────────────────────
-// Allow all origins (CORS is open); restrict via ALLOWED_ORIGIN env var if needed
-const corsOrigin = (process.env['ALLOWED_ORIGIN']) || '*';
-app.use(cors({ origin: corsOrigin }));
+app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
 app.use(express.json());
 
 // ── POSTGRESQL CONFIG ───────────────────────────────────────────
@@ -56,7 +54,7 @@ app.post('/api/auth/register', async (req, res) => {
 
     const hash = await bcrypt.hash(password, 10);
     const result = await pool.query(
-      'INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id',
+      'INSERT INTO users (username, password_hash, created_at) VALUES ($1, $2, NOW()) RETURNING id',
       [username, hash]
     );
     const userId = result.rows[0].id;
@@ -95,7 +93,7 @@ app.get('/api/trades', authMiddleware, async (req, res) => {
     const params = [req.userId];
     let query = 'SELECT * FROM trades WHERE user_id = $1';
     if (from) { params.push(from); query += ` AND date >= $${params.length}`; }
-    if (to)   { params.push(to);   query += ` AND date <= $${params.length}`; }
+    if (to) { params.push(to); query += ` AND date <= $${params.length}`; }
     query += ' ORDER BY date DESC, created_at DESC';
     const result = await pool.query(query, params);
     res.json(result.rows);
@@ -115,8 +113,8 @@ app.post('/api/trades', authMiddleware, async (req, res) => {
     : +((entry_price - exit_price) * size).toFixed(2);
   try {
     const result = await pool.query(
-      `INSERT INTO trades (user_id, date, type, entry_price, exit_price, position_size, pnl, grade, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      `INSERT INTO trades (user_id, date, type, entry_price, exit_price, position_size, pnl, grade, notes, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW()) RETURNING *`,
       [req.userId, date, type, entry_price, exit_price, size, pnl, grade || null, notes || '']
     );
     res.status(201).json(result.rows[0]);
@@ -169,24 +167,24 @@ app.get('/api/stats', authMiddleware, async (req, res) => {
     const params = [req.userId];
     let query = 'SELECT * FROM trades WHERE user_id = $1';
     if (from) { params.push(from); query += ` AND date >= $${params.length}`; }
-    if (to)   { params.push(to);   query += ` AND date <= $${params.length}`; }
+    if (to) { params.push(to); query += ` AND date <= $${params.length}`; }
     const { rows } = await pool.query(query, params);
 
-    const wins   = rows.filter(t => t.pnl > 0);
+    const wins = rows.filter(t => t.pnl > 0);
     const losses = rows.filter(t => t.pnl < 0);
-    const net    = rows.reduce((s, t) => s + parseFloat(t.pnl), 0);
+    const net = rows.reduce((s, t) => s + parseFloat(t.pnl), 0);
     const grossW = wins.reduce((s, t) => s + parseFloat(t.pnl), 0);
     const grossL = Math.abs(losses.reduce((s, t) => s + parseFloat(t.pnl), 0));
 
     res.json({
-      total:         rows.length,
-      wins:          wins.length,
-      losses:        losses.length,
-      win_rate:      rows.length ? +((wins.length / rows.length) * 100).toFixed(1) : 0,
+      total: rows.length,
+      wins: wins.length,
+      losses: losses.length,
+      win_rate: rows.length ? +((wins.length / rows.length) * 100).toFixed(1) : 0,
       profit_factor: grossL === 0 ? null : +(grossW / grossL).toFixed(2),
-      net_pnl:       +net.toFixed(2),
-      longs:         rows.filter(t => t.type === 'LONG').length,
-      shorts:        rows.filter(t => t.type === 'SHORT').length,
+      net_pnl: +net.toFixed(2),
+      longs: rows.filter(t => t.type === 'LONG').length,
+      shorts: rows.filter(t => t.type === 'SHORT').length,
     });
   } catch (err) {
     console.error(err);
