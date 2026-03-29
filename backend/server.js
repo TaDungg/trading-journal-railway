@@ -17,7 +17,9 @@ const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'tradeledger_secret_change_me';
 
 // ── MIDDLEWARE ──────────────────────────────────────────────────
-app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
+// Allow all origins (CORS is open); restrict via ALLOWED_ORIGIN env var if needed
+const corsOrigin = (process.env['ALLOWED_ORIGIN']) || '*';
+app.use(cors({ origin: corsOrigin }));
 app.use(express.json());
 
 // ── POSTGRESQL CONFIG ───────────────────────────────────────────
