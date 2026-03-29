@@ -1,0 +1,17 @@
+# Dependencies - NEVER commit these
+node_modules/
+backend/node_modules/
+
+# Environment files - NEVER commit secrets
+.env
+backend/.env
+backend/db.env
+*.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
