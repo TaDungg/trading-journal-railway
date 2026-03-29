@@ -62,7 +62,7 @@ app.post('/api/auth/register', async (req, res) => {
     res.json({ token, username });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message || 'Server error', detail: err.detail || null, code: err.code || null });
   }
 });
 
@@ -82,7 +82,7 @@ app.post('/api/auth/login', async (req, res) => {
     res.json({ token, username });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message || 'Server error', detail: err.detail || null, code: err.code || null });
   }
 });
 
@@ -99,7 +99,7 @@ app.get('/api/trades', authMiddleware, async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message || 'Server error', detail: err.detail || null, code: err.code || null });
   }
 });
 
@@ -120,7 +120,7 @@ app.post('/api/trades', authMiddleware, async (req, res) => {
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message || 'Server error', detail: err.detail || null, code: err.code || null });
   }
 });
 
@@ -143,7 +143,7 @@ app.put('/api/trades/:id', authMiddleware, async (req, res) => {
     res.json(result.rows[0]);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message || 'Server error', detail: err.detail || null, code: err.code || null });
   }
 });
 
@@ -157,7 +157,7 @@ app.delete('/api/trades/:id', authMiddleware, async (req, res) => {
     res.json({ deleted: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message || 'Server error', detail: err.detail || null, code: err.code || null });
   }
 });
 
@@ -188,7 +188,7 @@ app.get('/api/stats', authMiddleware, async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message || 'Server error', detail: err.detail || null, code: err.code || null });
   }
 });
 
