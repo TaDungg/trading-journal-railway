@@ -7,7 +7,7 @@
 'use strict';
 
 // ── API CONFIG ─────────────────────────────────────────────────
-const API_URL = 'https://trading-journal-railway-production.up.railway.app/';
+const API_URL = 'https://trading-journal-railway-production.up.railway.app';
 
 // ── CONSTANTS ──────────────────────────────────────────────────
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
