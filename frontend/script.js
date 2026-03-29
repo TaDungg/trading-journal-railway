@@ -1,10 +1,13 @@
 /* ================================================================
    TradeLedger — script.js
-   Handles: Auth, Trade CRUD, Calendar, Dashboard, Chart, Export
-   Storage: localStorage (production would use MySQL via backend)
+   Handles: Auth (JWT), Trade CRUD via REST API, Calendar, Dashboard, Chart, Export
+   Backend: Railway PostgreSQL API
    ================================================================ */
 
 'use strict';
+
+// ── API CONFIG ─────────────────────────────────────────────────
+const API_URL = 'https://trading-journal-railway-production.up.railway.app';
 
 // ── CONSTANTS ──────────────────────────────────────────────────
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -13,79 +16,97 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
 
 // ── STATE ──────────────────────────────────────────────────────
 let currentUser = null;
-let currentYear, currentMonth; // for journal calendar view
+let authToken = null;
+let currentYear, currentMonth;
 let editingId = null;
 let chartInstance = null;
 let activeRange = '30';
 let filterFrom = null, filterTo = null;
+let cachedTrades = [];
 
-// ── STORAGE HELPERS ────────────────────────────────────────────
-function usersDB() { return JSON.parse(localStorage.getItem('tl_users') || '{}'); }
-function tradesDB() {
-  const all = JSON.parse(localStorage.getItem('tl_trades') || '{}');
-  return all[currentUser] || [];
+// ── TOKEN HELPERS ──────────────────────────────────────────────
+function getToken() { return localStorage.getItem('tl_token'); }
+function setToken(t) { localStorage.setItem('tl_token', t); }
+function clearToken() { localStorage.removeItem('tl_token'); localStorage.removeItem('tl_user'); }
+function getStoredUser() { return localStorage.getItem('tl_user'); }
+function setStoredUser(u) { localStorage.setItem('tl_user', u); }
+
+// ── API HELPERS ────────────────────────────────────────────────
+async function apiFetch(path, options = {}) {
+  const token = getToken();
+  const res = await fetch(API_URL + path, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'API error');
+  return data;
 }
-function saveUsers(u) { localStorage.setItem('tl_users', JSON.stringify(u)); }
-function saveTrades(arr) {
-  const all = JSON.parse(localStorage.getItem('tl_trades') || '{}');
-  all[currentUser] = arr;
-  localStorage.setItem('tl_trades', JSON.stringify(all));
-}
-function getSession() { return localStorage.getItem('tl_session'); }
-function setSession(u) { localStorage.setItem('tl_session', u); }
-function clearSession() { localStorage.removeItem('tl_session'); }
 
 // ── AUTH ───────────────────────────────────────────────────────
-function authLogin() {
+async function authLogin() {
   const u = document.getElementById('login-user').value.trim();
   const p = document.getElementById('login-pass').value;
   if (!u || !p) return showAuthError('Fill in all fields.');
-  const users = usersDB();
-  if (!users[u] || users[u] !== btoa(p)) return showAuthError('Wrong username or password.');
-  loginSuccess(u);
+  try {
+    showAuthError('Signing in…', false);
+    const data = await apiFetch('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username: u, password: p }),
+    });
+    loginSuccess(data.token, data.username);
+  } catch (err) {
+    showAuthError(err.message || 'Login failed.');
+  }
 }
-function authRegister() {
+
+async function authRegister() {
   const u = document.getElementById('reg-user').value.trim();
   const p = document.getElementById('reg-pass').value;
   if (!u || !p) return showAuthError('Fill in all fields.');
   if (p.length < 4) return showAuthError('Password must be at least 4 chars.');
-  const users = usersDB();
-  if (users[u]) return showAuthError('Username already taken.');
-  users[u] = btoa(p);
-  saveUsers(users);
-  loginSuccess(u);
+  try {
+    showAuthError('Creating account…', false);
+    const data = await apiFetch('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ username: u, password: p }),
+    });
+    loginSuccess(data.token, data.username);
+  } catch (err) {
+    showAuthError(err.message || 'Registration failed.');
+  }
 }
-function loginSuccess(u) {
-  currentUser = u;
-  setSession(u);
+
+function loginSuccess(token, username) {
+  authToken = token;
+  currentUser = username;
+  setToken(token);
+  setStoredUser(username);
   document.getElementById('auth-overlay').classList.add('hidden');
-  document.getElementById('sidebar-user').textContent = u;
+  document.getElementById('sidebar-user').textContent = username;
   init();
 }
+
 function authLogout() {
   currentUser = null;
-  clearSession();
+  authToken = null;
+  clearToken();
   location.reload();
 }
-function showAuthError(msg) {
+
+function showAuthError(msg, isError = true) {
   const el = document.getElementById('auth-error');
   el.textContent = msg;
   el.classList.remove('hidden');
+  el.style.color = isError ? 'var(--red)' : 'var(--text3)';
 }
 
-// Auth tab switching
+// ── INIT ───────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  // Seed demo user
-  const users = usersDB();
-  if (!users['demo']) { users['demo'] = btoa('demo123'); saveUsers(users); }
-  if (!users['demo'].includes('=') && users['demo'] !== btoa('demo123')) {
-    users['demo'] = btoa('demo123'); saveUsers(users);
-  }
-
-  // Seed demo trades if none
-  const allTrades = JSON.parse(localStorage.getItem('tl_trades') || '{}');
-  if (!allTrades['demo'] || allTrades['demo'].length === 0) seedDemoTrades();
-
   // Auth tabs
   document.querySelectorAll('.auth-tab').forEach(tab => {
     tab.addEventListener('click', () => {
@@ -98,16 +119,18 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Check session
-  const session = getSession();
-  if (session) {
-    currentUser = session;
+  // Check stored session
+  const token = getToken();
+  const user = getStoredUser();
+  if (token && user) {
+    authToken = token;
+    currentUser = user;
     document.getElementById('auth-overlay').classList.add('hidden');
-    document.getElementById('sidebar-user').textContent = session;
+    document.getElementById('sidebar-user').textContent = user;
     init();
   }
 
-  // Chart filter buttons (dashboard only)
+  // Chart filter buttons
   document.querySelectorAll('.filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
@@ -121,7 +144,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (localStorage.getItem('tl_theme') === 'light') document.body.classList.add('light');
 });
 
-// ── INIT ───────────────────────────────────────────────────────
 function init() {
   const page = location.pathname.split('/').pop();
   if (page === 'dashboard.html' || page === '') {
@@ -130,21 +152,42 @@ function init() {
     initJournal();
   }
 }
-function initDashboard() {
+
+async function initDashboard() {
   const now = new Date();
   const greet = document.getElementById('greeting');
   const h = now.getHours();
   const g = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
   if (greet) greet.textContent = `${g}, ${currentUser}!`;
-  renderStats(tradesDB());
+  await loadTrades();
+  renderStats(cachedTrades);
   renderChart();
-  renderAllTrades(tradesDB());
+  renderAllTrades(cachedTrades);
 }
-function initJournal() {
+
+async function initJournal() {
   const now = new Date();
   currentYear = now.getFullYear();
   currentMonth = now.getMonth();
+  await loadTrades();
   renderJournal();
+}
+
+// ── TRADE DATA ─────────────────────────────────────────────────
+async function loadTrades(from, to) {
+  try {
+    let path = '/api/trades';
+    const params = [];
+    if (from) params.push(`from=${from}`);
+    if (to) params.push(`to=${to}`);
+    if (params.length) path += '?' + params.join('&');
+    cachedTrades = await apiFetch(path);
+    // Normalize types: pnl comes as string from DB
+    cachedTrades = cachedTrades.map(t => ({ ...t, pnl: parseFloat(t.pnl) }));
+  } catch (err) {
+    console.error('Failed to load trades:', err);
+    cachedTrades = [];
+  }
 }
 
 // ── THEME ──────────────────────────────────────────────────────
@@ -167,6 +210,7 @@ function calcStats(trades) {
   const shorts = trades.filter(t => t.type === 'SHORT').length;
   return { net, pf, wr, longs, shorts, total: trades.length };
 }
+
 function renderStats(trades) {
   const el = document.getElementById('stats-row');
   if (!el) return;
@@ -206,25 +250,25 @@ function renderJournal() {
   if (lbl) lbl.textContent = `${MONTHS[currentMonth]} ${currentYear}`;
   const calLbl = document.getElementById('cal-month-label');
   if (calLbl) calLbl.textContent = `${MONTHS[currentMonth]} ${currentYear}`;
-  const trades = tradesDB();
-  const monthTrades = trades.filter(t => {
+  const monthTrades = cachedTrades.filter(t => {
     const d = new Date(t.date + 'T00:00:00');
     return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
   });
   renderStats(monthTrades);
-  buildCalendar(trades);
+  buildCalendar(cachedTrades);
 }
-function changeMonth(delta) {
+
+async function changeMonth(delta) {
   currentMonth += delta;
   if (currentMonth > 11) { currentMonth = 0; currentYear++; }
   if (currentMonth < 0) { currentMonth = 11; currentYear--; }
   renderJournal();
 }
+
 function buildCalendar(trades) {
   const grid = document.getElementById('calendar-grid');
   if (!grid) return;
   grid.innerHTML = '';
-  // Headers
   DAYS.forEach(d => {
     const cell = document.createElement('div');
     cell.className = 'cal-header-cell';
@@ -236,7 +280,6 @@ function buildCalendar(trades) {
   weekHdr.textContent = 'Week PnL';
   grid.appendChild(weekHdr);
 
-  // Build day index
   const dayMap = {};
   trades.forEach(t => {
     const d = new Date(t.date + 'T00:00:00');
@@ -251,7 +294,6 @@ function buildCalendar(trades) {
   let dayNum = 1;
   let weekPnl = 0;
 
-  // Empty cells before first day
   for (let i = 0; i < firstDay; i++) {
     appendEmptyCell(grid);
     if ((i + 1) % 7 === 0) { appendWeekSummary(grid, weekPnl); weekPnl = 0; }
@@ -274,16 +316,17 @@ function buildCalendar(trades) {
     if (col % 7 === 0) { appendWeekSummary(grid, weekPnl); weekPnl = 0; }
     dayNum++;
   }
-  // Fill remaining cells in last row
   const remaining = (7 - (col % 7)) % 7;
   for (let i = 0; i < remaining; i++) appendEmptyCell(grid);
   if (remaining > 0 || col % 7 !== 0) appendWeekSummary(grid, weekPnl);
 }
+
 function appendEmptyCell(grid) {
   const cell = document.createElement('div');
   cell.className = 'cal-day empty';
   grid.appendChild(cell);
 }
+
 function appendWeekSummary(grid, pnl) {
   const cell = document.createElement('div');
   cell.className = 'cal-week-summary';
@@ -293,7 +336,6 @@ function appendWeekSummary(grid, pnl) {
 
 // ── DAY DETAIL MODAL ───────────────────────────────────────────
 function openDayModal(day, trades) {
-  const d = new Date(currentYear, currentMonth, day);
   document.getElementById('day-modal-title').textContent = `Trades — ${MONTHS[currentMonth]} ${day}, ${currentYear}`;
   const tbody = document.getElementById('day-trade-tbody');
   tbody.innerHTML = trades.map(t => `
@@ -310,6 +352,7 @@ function openDayModal(day, trades) {
   `).join('');
   document.getElementById('day-modal').classList.remove('hidden');
 }
+
 function closeDayModal() {
   document.getElementById('day-modal').classList.add('hidden');
 }
@@ -319,9 +362,8 @@ function renderChart() {
   const canvas = document.getElementById('pnl-chart');
   if (!canvas) return;
   const emptyEl = document.getElementById('chart-empty');
-  const trades = tradesDB().sort((a, b) => a.date.localeCompare(b.date));
+  const trades = [...cachedTrades].sort((a, b) => a.date.localeCompare(b.date));
 
-  // Filter by range
   const now = new Date();
   const filtered = activeRange === 'all' ? trades : trades.filter(t => {
     const days = parseInt(activeRange);
@@ -336,11 +378,8 @@ function renderChart() {
   }
   if (emptyEl) emptyEl.classList.add('hidden');
 
-  // Group by date → cumulative
   const dayMap = {};
-  filtered.forEach(t => {
-    dayMap[t.date] = (dayMap[t.date] || 0) + t.pnl;
-  });
+  filtered.forEach(t => { dayMap[t.date] = (dayMap[t.date] || 0) + t.pnl; });
   const labels = Object.keys(dayMap).sort();
   let cum = 0;
   const data = labels.map(l => { cum += dayMap[l]; return +cum.toFixed(2); });
@@ -349,8 +388,7 @@ function renderChart() {
   const gridColor = isLight ? 'rgba(0,0,0,.06)' : 'rgba(255,255,255,.05)';
   const textColor = isLight ? '#6b7280' : '#555d75';
   const lineColor = data[data.length - 1] >= 0 ? '#4ade80' : '#f87171';
-  const fillColor = data[data.length - 1] >= 0
-    ? 'rgba(74,222,128,.08)' : 'rgba(248,113,113,.08)';
+  const fillColor = data[data.length - 1] >= 0 ? 'rgba(74,222,128,.08)' : 'rgba(248,113,113,.08)';
 
   if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
   chartInstance = new Chart(canvas, {
@@ -434,22 +472,24 @@ function renderAllTrades(trades) {
     </tr>
   `).join('');
 }
-function applyFilter() {
+
+async function applyFilter() {
   filterFrom = document.getElementById('filter-from')?.value || null;
   filterTo = document.getElementById('filter-to')?.value || null;
-  const trades = tradesDB();
-  renderStats(trades);
-  renderAllTrades(trades);
+  await loadTrades(filterFrom, filterTo);
+  renderStats(cachedTrades);
+  renderAllTrades(cachedTrades);
 }
-function clearFilter() {
+
+async function clearFilter() {
   filterFrom = filterTo = null;
   const ff = document.getElementById('filter-from');
   const ft = document.getElementById('filter-to');
   if (ff) ff.value = '';
   if (ft) ft.value = '';
-  const trades = tradesDB();
-  renderStats(trades);
-  renderAllTrades(trades);
+  await loadTrades();
+  renderStats(cachedTrades);
+  renderAllTrades(cachedTrades);
 }
 
 // ── TRADE MODAL ────────────────────────────────────────────────
@@ -459,17 +499,19 @@ function setType(val) {
     b.classList.toggle('active', b.dataset.val === val);
   });
 }
+
 function setGrade(val) {
   document.getElementById('f-grade').value = val;
   document.querySelectorAll('.grade-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.grade === val);
   });
 }
+
 function openTradeModal(id) {
   editingId = id || null;
   document.getElementById('modal-title').textContent = id ? 'Edit Trade' : 'Add Trade';
   if (id) {
-    const trade = tradesDB().find(t => t.id === id);
+    const trade = cachedTrades.find(t => String(t.id) === String(id));
     if (trade) {
       document.getElementById('f-date').value = trade.date;
       document.getElementById('f-pnl').value = trade.pnl;
@@ -482,51 +524,69 @@ function openTradeModal(id) {
     document.getElementById('f-pnl').value = '';
     document.getElementById('f-notes').value = '';
     setType('LONG');
-    // clear grade
     document.getElementById('f-grade').value = '';
     document.querySelectorAll('.grade-btn').forEach(b => b.classList.remove('active'));
   }
   document.getElementById('trade-modal').classList.remove('hidden');
 }
+
 function closeTradeModal() {
   document.getElementById('trade-modal').classList.add('hidden');
   editingId = null;
 }
-function saveTrade() {
+
+async function saveTrade() {
   const date = document.getElementById('f-date').value;
   const type = document.getElementById('f-type').value;
   const pnl = parseFloat(document.getElementById('f-pnl').value);
-  const grade = document.getElementById('f-grade').value;
+  const grade = document.getElementById('f-grade').value || null;
   const notes = document.getElementById('f-notes').value.trim();
-  if (!date || isNaN(pnl)) {
-    alert('Please fill in Date and PnL.'); return;
-  }
-  const trades = tradesDB();
-  if (editingId) {
-    const idx = trades.findIndex(t => t.id === editingId);
-    if (idx !== -1) {
-      trades[idx] = { ...trades[idx], date, type, pnl: +pnl.toFixed(2), grade, notes };
+
+  if (!date || isNaN(pnl)) { alert('Please fill in Date and PnL.'); return; }
+
+  // Compute dummy entry/exit so backend can store them
+  // Using pnl directly: entry=100, exit=100+pnl (for LONG), 100-pnl (for SHORT)
+  const entry_price = 100;
+  const exit_price = type === 'LONG' ? +(100 + pnl).toFixed(4) : +(100 - pnl).toFixed(4);
+  const position_size = 1;
+
+  try {
+    if (editingId) {
+      await apiFetch(`/api/trades/${editingId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ date, type, entry_price, exit_price, position_size, grade, notes }),
+      });
+    } else {
+      await apiFetch('/api/trades', {
+        method: 'POST',
+        body: JSON.stringify({ date, type, entry_price, exit_price, position_size, grade, notes }),
+      });
     }
-  } else {
-    trades.push({ id: uid(), date, type, pnl: +pnl.toFixed(2), grade, notes, created_at: new Date().toISOString() });
+    closeTradeModal();
+    await refresh();
+  } catch (err) {
+    alert('Failed to save trade: ' + err.message);
   }
-  saveTrades(trades);
-  closeTradeModal();
-  refresh();
 }
-function deleteTrade(id) {
+
+async function deleteTrade(id) {
   if (!confirm('Delete this trade?')) return;
-  const trades = tradesDB().filter(t => t.id !== id);
-  saveTrades(trades);
-  closeDayModal();
-  refresh();
+  try {
+    await apiFetch(`/api/trades/${id}`, { method: 'DELETE' });
+    closeDayModal();
+    await refresh();
+  } catch (err) {
+    alert('Failed to delete trade: ' + err.message);
+  }
 }
-function refresh() {
+
+async function refresh() {
+  await loadTrades();
   const page = location.pathname.split('/').pop();
   if (page === 'dashboard.html' || page === '') {
-    renderStats(tradesDB());
+    renderStats(cachedTrades);
     renderChart();
-    renderAllTrades(tradesDB());
+    renderAllTrades(cachedTrades);
   } else {
     renderJournal();
   }
@@ -534,10 +594,9 @@ function refresh() {
 
 // ── EXPORT CSV ─────────────────────────────────────────────────
 function exportCSV() {
-  const trades = tradesDB();
-  if (!trades.length) { alert('No trades to export.'); return; }
+  if (!cachedTrades.length) { alert('No trades to export.'); return; }
   const headers = ['id', 'date', 'type', 'entry_price', 'exit_price', 'position_size', 'pnl', 'notes', 'created_at'];
-  const rows = [headers.join(','), ...trades.map(t =>
+  const rows = [headers.join(','), ...cachedTrades.map(t =>
     headers.map(h => JSON.stringify(t[h] ?? '')).join(',')
   )];
   const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
@@ -549,31 +608,4 @@ function exportCSV() {
 
 // ── UTILS ──────────────────────────────────────────────────────
 function fmt(n) { return (n >= 0 ? '+' : '') + n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace('$', n >= 0 ? '$' : '-$').replace('--', '-'); }
-function fmt2(n) { return n != null ? '$' + parseFloat(n).toFixed(2) : '—'; }
 function uid() { return Math.random().toString(36).slice(2, 9) + Date.now().toString(36); }
-
-// ── SEED DEMO TRADES ───────────────────────────────────────────
-function seedDemoTrades() {
-  const now = new Date();
-  const data = [];
-  // generate 3 months of trades
-  for (let i = 90; i >= 0; i--) {
-    if (Math.random() < 0.45) continue; // ~55% days have trades
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    const date = d.toISOString().slice(0, 10);
-    const numTrades = Math.floor(Math.random() * 3) + 1;
-    for (let j = 0; j < numTrades; j++) {
-      const type = Math.random() > 0.5 ? 'LONG' : 'SHORT';
-      const entry = +(100 + Math.random() * 400).toFixed(2);
-      const move = (Math.random() * 10 - 4); // bias slightly positive
-      const exit = +(entry + move).toFixed(2);
-      const size = +(Math.random() * 5 + 0.5).toFixed(2);
-      const pnl = type === 'LONG' ? +((exit - entry) * size).toFixed(2) : +((entry - exit) * size).toFixed(2);
-      data.push({ id: uid(), date, type, entry_price: entry, exit_price: exit, position_size: size, pnl, notes: '', created_at: new Date().toISOString() });
-    }
-  }
-  const all = JSON.parse(localStorage.getItem('tl_trades') || '{}');
-  all['demo'] = data;
-  localStorage.setItem('tl_trades', JSON.stringify(all));
-}
