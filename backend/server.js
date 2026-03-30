@@ -88,12 +88,13 @@ app.post('/api/auth/login', async (req, res) => {
 
 // ── TRADE ROUTES ────────────────────────────────────────────────
 app.get('/api/trades', authMiddleware, async (req, res) => {
-  const { from, to } = req.query;
+  const { from, to, account_id } = req.query;
   try {
     const params = [req.userId];
     let query = 'SELECT * FROM trades WHERE user_id = $1';
     if (from) { params.push(from); query += ` AND date >= $${params.length}`; }
-    if (to) { params.push(to); query += ` AND date <= $${params.length}`; }
+    if (to)   { params.push(to);   query += ` AND date <= $${params.length}`; }
+    if (account_id) { params.push(parseInt(account_id)); query += ` AND account_id = $${params.length}`; }
     query += ' ORDER BY date DESC, created_at DESC';
     const result = await pool.query(query, params);
     res.json(result.rows);
@@ -104,7 +105,7 @@ app.get('/api/trades', authMiddleware, async (req, res) => {
 });
 
 app.post('/api/trades', authMiddleware, async (req, res) => {
-  const { date, type, entry_price, exit_price, position_size, grade, notes } = req.body;
+  const { date, type, entry_price, exit_price, position_size, grade, notes, account_id } = req.body;
   if (!date || !type || entry_price == null || exit_price == null)
     return res.status(400).json({ error: 'Missing required fields' });
   const size = position_size || 1;
@@ -113,9 +114,9 @@ app.post('/api/trades', authMiddleware, async (req, res) => {
     : +((entry_price - exit_price) * size).toFixed(2);
   try {
     const result = await pool.query(
-      `INSERT INTO trades (user_id, date, type, entry_price, exit_price, position_size, pnl, grade, notes, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW()) RETURNING *`,
-      [req.userId, date, type, entry_price, exit_price, size, pnl, grade || null, notes || '']
+      `INSERT INTO trades (user_id, date, type, entry_price, exit_price, position_size, pnl, grade, notes, account_id, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW()) RETURNING *`,
+      [req.userId, date, type, entry_price, exit_price, size, pnl, grade || null, notes || '', account_id || null]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -125,7 +126,7 @@ app.post('/api/trades', authMiddleware, async (req, res) => {
 });
 
 app.put('/api/trades/:id', authMiddleware, async (req, res) => {
-  const { date, type, entry_price, exit_price, position_size, grade, notes } = req.body;
+  const { date, type, entry_price, exit_price, position_size, grade, notes, account_id } = req.body;
   const size = position_size || 1;
   const pnl = type === 'LONG'
     ? +((exit_price - entry_price) * size).toFixed(2)
@@ -134,10 +135,10 @@ app.put('/api/trades/:id', authMiddleware, async (req, res) => {
     const result = await pool.query(
       `UPDATE trades
        SET date=$1, type=$2, entry_price=$3, exit_price=$4,
-           position_size=$5, pnl=$6, grade=$7, notes=$8
-       WHERE id=$9 AND user_id=$10
+           position_size=$5, pnl=$6, grade=$7, notes=$8, account_id=$9
+       WHERE id=$10 AND user_id=$11
        RETURNING *`,
-      [date, type, entry_price, exit_price, size, pnl, grade || null, notes || '', req.params.id, req.userId]
+      [date, type, entry_price, exit_price, size, pnl, grade || null, notes || '', account_id || null, req.params.id, req.userId]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Trade not found' });
     res.json(result.rows[0]);
@@ -189,6 +190,69 @@ app.get('/api/stats', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message || 'Server error', detail: err.detail || null, code: err.code || null });
+  }
+});
+
+// ── ACCOUNT ROUTES ─────────────────────────────────────────────
+app.get('/api/accounts', authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM accounts WHERE user_id = $1 ORDER BY created_at ASC',
+      [req.userId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Server error' });
+  }
+});
+
+app.post('/api/accounts', authMiddleware, async (req, res) => {
+  const { name, type, size } = req.body;
+  if (!name) return res.status(400).json({ error: 'Account name is required' });
+  const acctType = ['live', 'prop'].includes(type) ? type : 'live';
+  try {
+    const result = await pool.query(
+      `INSERT INTO accounts (user_id, name, type, size, created_at)
+       VALUES ($1, $2, $3, $4, NOW()) RETURNING *`,
+      [req.userId, name.trim(), acctType, parseFloat(size) || 0]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Server error' });
+  }
+});
+
+app.put('/api/accounts/:id', authMiddleware, async (req, res) => {
+  const { name, type, size } = req.body;
+  if (!name) return res.status(400).json({ error: 'Account name is required' });
+  const acctType = ['live', 'prop'].includes(type) ? type : 'live';
+  try {
+    const result = await pool.query(
+      `UPDATE accounts SET name=$1, type=$2, size=$3 WHERE id=$4 AND user_id=$5 RETURNING *`,
+      [name.trim(), acctType, parseFloat(size) || 0, req.params.id, req.userId]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Account not found' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Server error' });
+  }
+});
+
+app.delete('/api/accounts/:id', authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'DELETE FROM accounts WHERE id=$1 AND user_id=$2 RETURNING id',
+      [req.params.id, req.userId]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Account not found' });
+    if (activeAccountId === parseInt(req.params.id)) activeAccountId = null;
+    res.json({ deleted: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || 'Server error' });
   }
 });
 

@@ -24,6 +24,8 @@ let lsChartInstance = null;
 let activeRange = '30';
 let filterFrom = null, filterTo = null;
 let cachedTrades = [];
+let accounts = [];
+let activeAccountId = null;
 
 // ── TOKEN HELPERS ──────────────────────────────────────────────
 function getToken() { return localStorage.getItem('tl_token'); }
@@ -141,6 +143,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // Close account dropdown when clicking outside
+  document.addEventListener('click', e => {
+    const sel = document.getElementById('acct-selector');
+    if (sel && !sel.contains(e.target)) {
+      document.getElementById('acct-dropdown')?.classList.add('hidden');
+      sel.classList.remove('open');
+    }
+  });
+
   // Theme
   if (localStorage.getItem('tl_theme') === 'light') document.body.classList.add('light');
 });
@@ -160,6 +171,8 @@ async function initDashboard() {
   const h = now.getHours();
   const g = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
   if (greet) greet.textContent = `${g}, ${currentUser}!`;
+  await loadAccounts();
+  renderAccountSelector();
   await loadTrades();
   renderStats(cachedTrades);
   renderChart();
@@ -170,6 +183,8 @@ async function initJournal() {
   const now = new Date();
   currentYear = now.getFullYear();
   currentMonth = now.getMonth();
+  await loadAccounts();
+  renderAccountSelector();
   await loadTrades();
   renderJournal();
 }
@@ -180,10 +195,10 @@ async function loadTrades(from, to) {
     let path = '/api/trades';
     const params = [];
     if (from) params.push(`from=${from}`);
-    if (to) params.push(`to=${to}`);
+    if (to)   params.push(`to=${to}`);
+    if (activeAccountId !== null) params.push(`account_id=${activeAccountId}`);
     if (params.length) path += '?' + params.join('&');
     cachedTrades = await apiFetch(path);
-    // Normalize: pnl comes as string from DB, date comes as full ISO timestamp
     cachedTrades = cachedTrades.map(t => ({
       ...t,
       pnl: parseFloat(t.pnl),
@@ -201,6 +216,113 @@ function toggleTheme() {
   localStorage.setItem('tl_theme', document.body.classList.contains('light') ? 'light' : 'dark');
   if (chartInstance) renderChart();
   renderStats(cachedTrades);
+}
+
+// ── ACCOUNTS ───────────────────────────────────────────────────
+async function loadAccounts() {
+  try {
+    accounts = await apiFetch('/api/accounts');
+  } catch (err) {
+    console.error('Failed to load accounts:', err);
+    accounts = [];
+  }
+}
+
+function renderAccountSelector() {
+  const list = document.getElementById('acct-list');
+  const btnLabel = document.getElementById('acct-btn-label');
+  if (!list) return;
+
+  const active = accounts.find(a => String(a.id) === String(activeAccountId));
+  if (btnLabel) btnLabel.textContent = active ? active.name : 'All Accounts';
+
+  const allItem = `
+    <div class="acct-item${activeAccountId === null ? ' active' : ''}" onclick="selectAccount(null)">
+      <span class="acct-item-dot all"></span>
+      <div class="acct-item-info">
+        <div class="acct-item-name">All Accounts</div>
+        <div class="acct-item-meta">${accounts.length} account${accounts.length !== 1 ? 's' : ''}</div>
+      </div>
+    </div>`;
+
+  const items = accounts.map(a => `
+    <div class="acct-item${String(a.id) === String(activeAccountId) ? ' active' : ''}" onclick="selectAccount(${a.id})">
+      <span class="acct-item-dot ${a.type}"></span>
+      <div class="acct-item-info">
+        <div class="acct-item-name">${a.name}</div>
+        <div class="acct-item-meta">${a.type === 'prop' ? '🏆 Prop Firm' : '💼 Live'} · $${Number(a.size).toLocaleString()}</div>
+      </div>
+    </div>`).join('');
+
+  list.innerHTML = allItem + items;
+}
+
+function toggleAccountDropdown() {
+  const dd = document.getElementById('acct-dropdown');
+  const sel = document.getElementById('acct-selector');
+  if (!dd) return;
+  const isOpen = !dd.classList.contains('hidden');
+  if (isOpen) {
+    dd.classList.add('hidden');
+    sel?.classList.remove('open');
+  } else {
+    renderAccountSelector();
+    dd.classList.remove('hidden');
+    sel?.classList.add('open');
+  }
+}
+
+async function selectAccount(id) {
+  activeAccountId = id;
+  renderAccountSelector();
+  document.getElementById('acct-dropdown')?.classList.add('hidden');
+  document.getElementById('acct-selector')?.classList.remove('open');
+  await refresh();
+}
+
+function openAccountModal() {
+  document.getElementById('acct-dropdown')?.classList.add('hidden');
+  document.getElementById('acct-selector')?.classList.remove('open');
+  const nameEl = document.getElementById('acct-name');
+  const sizeEl = document.getElementById('acct-size');
+  if (nameEl) nameEl.value = '';
+  if (sizeEl) sizeEl.value = '';
+  const typeEl = document.getElementById('acct-type');
+  if (typeEl) typeEl.value = 'live';
+  document.querySelectorAll('.acct-type-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.val === 'live');
+  });
+  document.getElementById('account-modal')?.classList.remove('hidden');
+}
+
+function closeAccountModal() {
+  document.getElementById('account-modal')?.classList.add('hidden');
+}
+
+function setAccountType(val) {
+  const typeEl = document.getElementById('acct-type');
+  if (typeEl) typeEl.value = val;
+  document.querySelectorAll('.acct-type-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.val === val);
+  });
+}
+
+async function saveAccount() {
+  const name = document.getElementById('acct-name')?.value.trim();
+  const type = document.getElementById('acct-type')?.value || 'live';
+  const size = parseFloat(document.getElementById('acct-size')?.value) || 0;
+  if (!name) { alert('Please enter an account name.'); return; }
+  try {
+    const newAcct = await apiFetch('/api/accounts', {
+      method: 'POST',
+      body: JSON.stringify({ name, type, size }),
+    });
+    accounts.push(newAcct);
+    closeAccountModal();
+    await selectAccount(newAcct.id);
+  } catch (err) {
+    alert('Failed to create account: ' + err.message);
+  }
 }
 
 // ── STATS CARDS ────────────────────────────────────────────────
@@ -258,7 +380,7 @@ function renderStats(trades) {
     </div>
     <div class="stat-card donut-card">
       <div class="stat-label">Long vs Short</div>
-      <canvas id="ls-donut" width="88" height="88"></canvas>
+      <canvas id="ls-donut" width="72" height="72"></canvas>
     </div>
   `;
   renderLSDonut(s.longs, s.shorts);
@@ -281,11 +403,13 @@ function renderLSDonut(longs, shorts) {
           : ['#4ade80', '#f87171'],
         borderWidth: 0,
         hoverOffset: 6,
+        clip: false,
       }],
     },
     options: {
       cutout: '68%',
       responsive: false,
+      layout: { padding: { top: 2, bottom: 2, left: 2, right: 2 } },
       plugins: {
         legend: { display: false },
         tooltip: {
@@ -297,6 +421,8 @@ function renderLSDonut(longs, shorts) {
           bodyColor: isLight ? '#4b5563' : '#8891aa',
           padding: 10,
           displayColors: true,
+          xAlign: 'center',
+          yAlign: 'bottom',
           callbacks: {
             title: () => '',
             label: ctx => `  ${ctx.label} trades`,
@@ -617,12 +743,12 @@ async function saveTrade() {
     if (editingId) {
       await apiFetch(`/api/trades/${editingId}`, {
         method: 'PUT',
-        body: JSON.stringify({ date, type, entry_price, exit_price, position_size, grade, notes }),
+        body: JSON.stringify({ date, type, entry_price, exit_price, position_size, grade, notes, account_id: activeAccountId }),
       });
     } else {
       await apiFetch('/api/trades', {
         method: 'POST',
-        body: JSON.stringify({ date, type, entry_price, exit_price, position_size, grade, notes }),
+        body: JSON.stringify({ date, type, entry_price, exit_price, position_size, grade, notes, account_id: activeAccountId }),
       });
     }
     closeTradeModal();
