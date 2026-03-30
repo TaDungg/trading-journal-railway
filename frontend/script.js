@@ -340,7 +340,7 @@ function calcStats(trades) {
   const avgWin = wins.length ? +(grossW / wins.length).toFixed(2) : 0;
   const avgLoss = losses.length ? +(grossL / losses.length).toFixed(2) : 0;
   const avgRR = (avgWin > 0 && avgLoss > 0) ? +(avgWin / avgLoss).toFixed(2) : null;
-  return { net, pf, wr, longs, shorts, total: trades.length, avgWin, avgLoss, avgRR };
+  return { net, pf, wr, longs, shorts, total: trades.length, avgWin, avgLoss, avgRR, grossW };
 }
 
 function renderStats(trades) {
@@ -385,6 +385,7 @@ function renderStats(trades) {
     </div>
   `;
   renderLSDonut(s.longs, s.shorts);
+  renderEdgePanel(trades, s);
 }
 
 function renderLSDonut(longs, shorts) {
@@ -431,6 +432,99 @@ function renderLSDonut(longs, shorts) {
         },
       },
     },
+  });
+}
+
+// ── EDGE & CONSISTENCY PANEL ───────────────────────────────────
+let edgeRadarInstance = null;
+
+function renderEdgePanel(trades, stats) {
+  const consistencyEl = document.getElementById('consistency-score');
+  const canvas = document.getElementById('edgeRadarChart');
+  if (!consistencyEl || !canvas) return;
+
+  // 1. Consistency Score: Best Day / Total Net Profit * 100
+  const dayPnl = {};
+  trades.forEach(t => {
+    dayPnl[t.date] = (dayPnl[t.date] || 0) + t.pnl;
+  });
+
+  const dailyPnls = Object.values(dayPnl);
+  const bestDay = dailyPnls.length ? Math.max(...dailyPnls, 0) : 0;
+  
+  let consistency = 0;
+  if (stats.net > 0 && bestDay > 0) {
+    consistency = (bestDay / stats.net) * 100;
+  }
+  
+  consistencyEl.innerHTML = stats.net > 0 ? `${consistency.toFixed(1)}<span>%</span>` : '--<span>%</span>';
+  
+  // Color the consistency based on prop firm strictness (e.g. <30% is great, >50% is bad)
+  if (stats.net > 0) {
+    consistencyEl.style.color = consistency < 30 ? 'var(--green)' : consistency > 50 ? 'var(--red)' : 'var(--text)';
+  } else {
+    consistencyEl.style.color = 'var(--text)';
+  }
+
+  // 2. Edge Radar Metrics
+  const winRateScore = stats.wr || 0;
+  const pfRaw = isFinite(stats.pf) ? stats.pf : (stats.grossW > 0 ? 3 : 0);
+  const pfScore = Math.min(100, (pfRaw / 3) * 100);
+  const rrRaw = stats.avgRR || 0;
+  const rrScore = Math.min(100, (rrRaw / 3) * 100);
+
+  if (edgeRadarInstance) { edgeRadarInstance.destroy(); }
+
+  const isLight = document.body.classList.contains('light');
+  const textColor = isLight ? '#4b5563' : '#8891aa';
+  const gridColor = isLight ? 'rgba(0,0,0,.08)' : 'rgba(255,255,255,.05)';
+  const brandColor = '#4ade80';
+
+  edgeRadarInstance = new Chart(canvas, {
+    type: 'radar',
+    data: {
+      labels: ['Win %', 'Profit Factor', 'Avg W/L'],
+      datasets: [{
+        data: trades.length ? [winRateScore, pfScore, rrScore] : [0, 0, 0],
+        backgroundColor: 'rgba(74, 222, 128, 0.15)',
+        borderColor: brandColor,
+        pointBackgroundColor: brandColor,
+        pointBorderColor: '#fff',
+        pointHoverBackgroundColor: '#fff',
+        pointHoverBorderColor: brandColor,
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        r: {
+          angleLines: { color: gridColor },
+          grid: { color: gridColor },
+          pointLabels: { color: textColor, font: { family: "'DM Mono', monospace", size: 10 } },
+          ticks: { display: false, min: 0, max: 100, stepSize: 20 }
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: isLight ? '#fff' : '#1a1d27',
+          borderColor: isLight ? '#dde0eb' : '#252836',
+          borderWidth: 1,
+          titleColor: isLight ? '#111' : '#e8eaf0',
+          bodyColor: isLight ? '#4b5563' : '#8891aa',
+          callbacks: {
+            title: () => 'Metric Detail',
+            label: (ctx) => {
+              if (ctx.dataIndex === 0) return `  Win Rate: ${stats.wr}%`;
+              if (ctx.dataIndex === 1) return `  Profit Factor: ${isFinite(stats.pf) ? stats.pf : '∞'}`;
+              if (ctx.dataIndex === 2) return `  Avg W/L: ${stats.avgRR || 0}R`;
+            }
+          }
+        }
+      }
+    }
   });
 }
 

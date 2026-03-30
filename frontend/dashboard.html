@@ -244,6 +244,24 @@
     </div>
   </div>
 
+  <!-- RIGHT PANEL (EDGE & CONSISTENCY) -->
+  <aside class="right-panel">
+    <!-- Consistency Score -->
+    <div class="edge-widget">
+      <div class="edge-widget-title">Consistency</div>
+      <div class="edge-info">Best Day / Total Profit</div>
+      <div class="consistency-value" id="consistency-score">--<span>%</span></div>
+    </div>
+    <!-- Edge Score -->
+    <div class="edge-widget">
+      <div class="edge-widget-title">Edge Radar</div>
+      <div class="edge-info">Win % vs Profit Factor vs R:R</div>
+      <div class="edge-chart-wrapper">
+        <canvas id="edgeRadarChart"></canvas>
+      </div>
+    </div>
+  </aside>
+
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="script.js"></script>
 </body>
