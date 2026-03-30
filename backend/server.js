@@ -105,7 +105,7 @@ app.get('/api/trades', authMiddleware, async (req, res) => {
 });
 
 app.post('/api/trades', authMiddleware, async (req, res) => {
-  const { date, type, entry_price, exit_price, position_size, grade, notes, account_id } = req.body;
+  const { date, type, entry_price, exit_price, position_size, grade, notes, account_id, mental, initial_risk, image_data } = req.body;
   if (!date || !type || entry_price == null || exit_price == null)
     return res.status(400).json({ error: 'Missing required fields' });
   const size = position_size || 1;
@@ -114,9 +114,10 @@ app.post('/api/trades', authMiddleware, async (req, res) => {
     : +((entry_price - exit_price) * size).toFixed(2);
   try {
     const result = await pool.query(
-      `INSERT INTO trades (user_id, date, type, entry_price, exit_price, position_size, pnl, grade, notes, account_id, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW()) RETURNING *`,
-      [req.userId, date, type, entry_price, exit_price, size, pnl, grade || null, notes || '', account_id || null]
+      `INSERT INTO trades (user_id, date, type, entry_price, exit_price, position_size, pnl, grade, notes, account_id, mental, initial_risk, image_data, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW()) RETURNING *`,
+      [req.userId, date, type, entry_price, exit_price, size, pnl, grade || null, notes || '', account_id || null,
+       mental || null, initial_risk ? parseFloat(initial_risk) : null, image_data || null]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -126,7 +127,7 @@ app.post('/api/trades', authMiddleware, async (req, res) => {
 });
 
 app.put('/api/trades/:id', authMiddleware, async (req, res) => {
-  const { date, type, entry_price, exit_price, position_size, grade, notes, account_id } = req.body;
+  const { date, type, entry_price, exit_price, position_size, grade, notes, account_id, mental, initial_risk, image_data } = req.body;
   const size = position_size || 1;
   const pnl = type === 'LONG'
     ? +((exit_price - entry_price) * size).toFixed(2)
@@ -135,10 +136,13 @@ app.put('/api/trades/:id', authMiddleware, async (req, res) => {
     const result = await pool.query(
       `UPDATE trades
        SET date=$1, type=$2, entry_price=$3, exit_price=$4,
-           position_size=$5, pnl=$6, grade=$7, notes=$8, account_id=$9
-       WHERE id=$10 AND user_id=$11
+           position_size=$5, pnl=$6, grade=$7, notes=$8, account_id=$9,
+           mental=$10, initial_risk=$11, image_data=$12
+       WHERE id=$13 AND user_id=$14
        RETURNING *`,
-      [date, type, entry_price, exit_price, size, pnl, grade || null, notes || '', account_id || null, req.params.id, req.userId]
+      [date, type, entry_price, exit_price, size, pnl, grade || null, notes || '', account_id || null,
+       mental || null, initial_risk ? parseFloat(initial_risk) : null, image_data !== undefined ? (image_data || null) : undefined,
+       req.params.id, req.userId]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Trade not found' });
     res.json(result.rows[0]);

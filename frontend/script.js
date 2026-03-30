@@ -26,6 +26,7 @@ let filterFrom = null, filterTo = null;
 let cachedTrades = [];
 let accounts = [];
 let activeAccountId = null;
+let currentTradeImage = null;
 
 // ── TOKEN HELPERS ──────────────────────────────────────────────
 function getToken() { return localStorage.getItem('tl_token'); }
@@ -681,7 +682,7 @@ async function clearFilter() {
   renderAllTrades(cachedTrades);
 }
 
-// ── TRADE MODAL ────────────────────────────────────────────────
+// ── TRADE MODAL ────────────────────────────────────────────
 function setType(val) {
   document.getElementById('f-type').value = val;
   document.querySelectorAll('.type-btn').forEach(b => {
@@ -696,23 +697,125 @@ function setGrade(val) {
   });
 }
 
+function setMood(val) {
+  const el = document.getElementById('f-mental');
+  if (el) el.value = val;
+  document.querySelectorAll('.mood-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.mood === val);
+  });
+}
+
+function setTradeAccount(id) {
+  const el = document.getElementById('f-account');
+  if (el) el.value = id === null ? '' : String(id);
+  document.querySelectorAll('.trade-acct-item').forEach(item => {
+    const isAll = item.dataset.id === 'all';
+    const match = id === null ? isAll : String(item.dataset.id) === String(id);
+    item.classList.toggle('active', match);
+  });
+}
+
+function renderTradeAccountPicker() {
+  const container = document.getElementById('trade-acct-picker');
+  if (!container) return;
+  const allItem = `<div class="trade-acct-item" data-id="all" onclick="setTradeAccount(null)">
+    <span class="acct-item-dot all"></span>All Accounts
+  </div>`;
+  const items = accounts.map(a => `
+    <div class="trade-acct-item" data-id="${a.id}" onclick="setTradeAccount(${a.id})">
+      <span class="acct-item-dot ${a.type}"></span>${a.name}
+    </div>`).join('');
+  container.innerHTML = allItem + items;
+  setTradeAccount(activeAccountId);
+}
+
+// ── IMAGE UPLOAD ───────────────────────────────────────────────
+function handleImageUpload(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const MAX_W = 1920, MAX_H = 1080, QUALITY = 0.8;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      if (w > MAX_W) { h = Math.round(h * MAX_W / w); w = MAX_W; }
+      if (h > MAX_H) { w = Math.round(w * MAX_H / h); h = MAX_H; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      currentTradeImage = canvas.toDataURL('image/jpeg', QUALITY);
+      showImagePreview(currentTradeImage);
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function handleImageDrop(e) {
+  e.preventDefault();
+  document.getElementById('img-dropzone')?.classList.remove('dragover');
+  const file = e.dataTransfer?.files[0];
+  if (file && file.type.startsWith('image/')) handleImageUpload(file);
+}
+
+function showImagePreview(src) {
+  const zone = document.getElementById('img-dropzone');
+  const placeholder = document.getElementById('img-placeholder');
+  const clearBtn = document.getElementById('img-clear-btn');
+  if (!zone) return;
+  const existing = zone.querySelector('.trade-img-preview');
+  if (existing) existing.remove();
+  const imgEl = document.createElement('img');
+  imgEl.className = 'trade-img-preview';
+  imgEl.src = src;
+  zone.appendChild(imgEl);
+  if (placeholder) placeholder.style.display = 'none';
+  if (clearBtn) clearBtn.classList.remove('hidden');
+}
+
+function clearTradeImage() {
+  currentTradeImage = null;
+  const fileInput = document.getElementById('f-image');
+  if (fileInput) fileInput.value = '';
+  const zone = document.getElementById('img-dropzone');
+  const placeholder = document.getElementById('img-placeholder');
+  const clearBtn = document.getElementById('img-clear-btn');
+  if (zone) { const ex = zone.querySelector('.trade-img-preview'); if (ex) ex.remove(); }
+  if (placeholder) placeholder.style.display = '';
+  if (clearBtn) clearBtn.classList.add('hidden');
+}
+
 function openTradeModal(id) {
   editingId = id || null;
   document.getElementById('modal-title').textContent = id ? 'Edit Trade' : 'Add Trade';
+  clearTradeImage();
+  renderTradeAccountPicker();
   if (id) {
     const trade = cachedTrades.find(t => String(t.id) === String(id));
     if (trade) {
       document.getElementById('f-date').value = trade.date;
       document.getElementById('f-pnl').value = trade.pnl;
+      const riskEl = document.getElementById('f-risk');
+      if (riskEl) riskEl.value = trade.initial_risk || '';
       document.getElementById('f-notes').value = trade.notes || '';
       setType(trade.type || 'LONG');
       setGrade(trade.grade || '');
+      setMood(trade.mental || '');
+      setTradeAccount(trade.account_id || null);
+      if (trade.image_data) {
+        currentTradeImage = trade.image_data;
+        showImagePreview(trade.image_data);
+      }
     }
   } else {
     document.getElementById('f-date').value = new Date().toISOString().slice(0, 10);
     document.getElementById('f-pnl').value = '';
+    const riskEl = document.getElementById('f-risk');
+    if (riskEl) riskEl.value = '';
     document.getElementById('f-notes').value = '';
     setType('LONG');
+    setGrade('');
+    setMood('');
     document.getElementById('f-grade').value = '';
     document.querySelectorAll('.grade-btn').forEach(b => b.classList.remove('active'));
   }
@@ -722,34 +825,36 @@ function openTradeModal(id) {
 function closeTradeModal() {
   document.getElementById('trade-modal').classList.add('hidden');
   editingId = null;
+  clearTradeImage();
+  setMood('');
 }
 
 async function saveTrade() {
-  const date = document.getElementById('f-date').value;
-  const type = document.getElementById('f-type').value;
-  const pnl = parseFloat(document.getElementById('f-pnl').value);
-  const grade = document.getElementById('f-grade').value || null;
-  const notes = document.getElementById('f-notes').value.trim();
+  const date        = document.getElementById('f-date').value;
+  const type        = document.getElementById('f-type').value;
+  const pnl         = parseFloat(document.getElementById('f-pnl').value);
+  const grade       = document.getElementById('f-grade').value || null;
+  const notes       = document.getElementById('f-notes').value.trim();
+  const mental      = document.getElementById('f-mental')?.value || null;
+  const riskVal     = document.getElementById('f-risk')?.value;
+  const initial_risk = riskVal ? parseFloat(riskVal) : null;
+  const acctVal     = document.getElementById('f-account')?.value;
+  const account_id  = acctVal ? parseInt(acctVal) : null;
+  const image_data  = currentTradeImage || null;
 
   if (!date || isNaN(pnl)) { alert('Please fill in Date and PnL.'); return; }
 
-  // Compute dummy entry/exit so backend can store them
-  // Using pnl directly: entry=100, exit=100+pnl (for LONG), 100-pnl (for SHORT)
-  const entry_price = 100;
-  const exit_price = type === 'LONG' ? +(100 + pnl).toFixed(4) : +(100 - pnl).toFixed(4);
+  const entry_price  = 100;
+  const exit_price   = type === 'LONG' ? +(100 + pnl).toFixed(4) : +(100 - pnl).toFixed(4);
   const position_size = 1;
 
   try {
+    const body = { date, type, entry_price, exit_price, position_size,
+                   grade, notes, account_id, mental, initial_risk, image_data };
     if (editingId) {
-      await apiFetch(`/api/trades/${editingId}`, {
-        method: 'PUT',
-        body: JSON.stringify({ date, type, entry_price, exit_price, position_size, grade, notes, account_id: activeAccountId }),
-      });
+      await apiFetch(`/api/trades/${editingId}`, { method: 'PUT', body: JSON.stringify(body) });
     } else {
-      await apiFetch('/api/trades', {
-        method: 'POST',
-        body: JSON.stringify({ date, type, entry_price, exit_price, position_size, grade, notes, account_id: activeAccountId }),
-      });
+      await apiFetch('/api/trades', { method: 'POST', body: JSON.stringify(body) });
     }
     closeTradeModal();
     await refresh();
@@ -757,6 +862,7 @@ async function saveTrade() {
     alert('Failed to save trade: ' + err.message);
   }
 }
+
 
 async function deleteTrade(id) {
   if (!confirm('Delete this trade?')) return;
