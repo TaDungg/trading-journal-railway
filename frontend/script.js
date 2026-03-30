@@ -705,28 +705,41 @@ function setMood(val) {
   });
 }
 
-function setTradeAccount(id) {
-  const el = document.getElementById('f-account');
-  if (el) el.value = id === null ? '' : String(id);
-  document.querySelectorAll('.trade-acct-item').forEach(item => {
-    const isAll = item.dataset.id === 'all';
-    const match = id === null ? isAll : String(item.dataset.id) === String(id);
-    item.classList.toggle('active', match);
+function toggleAllAccounts(checked) {
+  document.querySelectorAll('.trade-acct-chk').forEach(chk => chk.checked = checked);
+}
+
+function handleAccountCheck() {
+  const allChk = document.getElementById('acct-all-chk');
+  const individualChks = document.querySelectorAll('.trade-acct-chk');
+  if (!allChk || individualChks.length === 0) return;
+  const allChecked = Array.from(individualChks).every(c => c.checked);
+  allChk.checked = allChecked;
+}
+
+function setTradeAccounts(idsArray) {
+  if (!Array.isArray(idsArray)) idsArray = [];
+  document.querySelectorAll('.trade-acct-chk').forEach(chk => {
+    chk.checked = idsArray.includes(parseInt(chk.value));
   });
+  handleAccountCheck();
 }
 
 function renderTradeAccountPicker() {
   const container = document.getElementById('trade-acct-picker');
   if (!container) return;
-  const allItem = `<div class="trade-acct-item" data-id="all" onclick="setTradeAccount(null)">
-    <span class="acct-item-dot all"></span>All Accounts
-  </div>`;
+  const allItem = `<label class="trade-acct-label">
+    <input type="checkbox" id="acct-all-chk" onchange="toggleAllAccounts(this.checked)">
+    <strong>All Accounts</strong>
+  </label>`;
   const items = accounts.map(a => `
-    <div class="trade-acct-item" data-id="${a.id}" onclick="setTradeAccount(${a.id})">
+    <label class="trade-acct-label">
+      <input type="checkbox" class="trade-acct-chk" value="${a.id}" onchange="handleAccountCheck()">
       <span class="acct-item-dot ${a.type}"></span>${a.name}
-    </div>`).join('');
-  container.innerHTML = allItem + items;
-  setTradeAccount(activeAccountId);
+    </label>`).join('');
+  container.innerHTML = allItem + '<div class="trade-acct-list">' + items + '</div>';
+  const defaultIds = activeAccountId ? [activeAccountId] : accounts.map(a => a.id);
+  setTradeAccounts(defaultIds);
 }
 
 // ── IMAGE UPLOAD ───────────────────────────────────────────────
@@ -801,7 +814,7 @@ function openTradeModal(id) {
       setType(trade.type || 'LONG');
       setGrade(trade.grade || '');
       setMood(trade.mental || '');
-      setTradeAccount(trade.account_id || null);
+      setTradeAccounts(trade.account_ids || []);
       if (trade.image_data) {
         currentTradeImage = trade.image_data;
         showImagePreview(trade.image_data);
@@ -816,6 +829,7 @@ function openTradeModal(id) {
     setType('LONG');
     setGrade('');
     setMood('');
+    setTradeAccounts(activeAccountId ? [parseInt(activeAccountId)] : accounts.map(a => a.id));
     document.getElementById('f-grade').value = '';
     document.querySelectorAll('.grade-btn').forEach(b => b.classList.remove('active'));
   }
@@ -838,8 +852,10 @@ async function saveTrade() {
   const mental      = document.getElementById('f-mental')?.value || null;
   const riskVal     = document.getElementById('f-risk')?.value;
   const initial_risk = riskVal ? parseFloat(riskVal) : null;
-  const acctVal     = document.getElementById('f-account')?.value;
-  const account_id  = acctVal ? parseInt(acctVal) : null;
+  
+  const acctChks    = document.querySelectorAll('.trade-acct-chk:checked');
+  const account_ids = Array.from(acctChks).map(c => parseInt(c.value));
+  
   const image_data  = currentTradeImage || null;
 
   if (!date || isNaN(pnl)) { alert('Please fill in Date and PnL.'); return; }
@@ -850,7 +866,7 @@ async function saveTrade() {
 
   try {
     const body = { date, type, entry_price, exit_price, position_size,
-                   grade, notes, account_id, mental, initial_risk, image_data };
+                   grade, notes, account_ids, mental, initial_risk, image_data };
     if (editingId) {
       await apiFetch(`/api/trades/${editingId}`, { method: 'PUT', body: JSON.stringify(body) });
     } else {

@@ -969,35 +969,42 @@ body {
 .trade-acct-picker {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  max-height: 100px;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.trade-acct-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 80px;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--border2) transparent;
+  border-top: 1px dotted var(--border2);
+  padding-top: 6px;
+  padding-left: 2px;
 }
 
-.trade-acct-item {
+.trade-acct-label {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 9px;
-  border-radius: 7px;
   font-size: .76rem;
-  cursor: pointer;
   color: var(--text2);
-  border: 1px solid transparent;
-  transition: all .12s;
+  cursor: pointer;
+  transition: color .15s;
 }
 
-.trade-acct-item:hover {
-  background: var(--bg3);
+.trade-acct-label:hover {
   color: var(--text);
 }
 
-.trade-acct-item.active {
-  background: rgba(110, 231, 183, .08);
-  border-color: rgba(110, 231, 183, .22);
-  color: var(--accent);
+.trade-acct-label input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: var(--accent);
+  width: 13px;
+  height: 13px;
 }
 
 
