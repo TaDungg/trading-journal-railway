@@ -20,6 +20,7 @@ let authToken = null;
 let currentYear, currentMonth;
 let editingId = null;
 let chartInstance = null;
+let lsChartInstance = null;
 let activeRange = '30';
 let filterFrom = null, filterTo = null;
 let cachedTrades = [];
@@ -199,6 +200,7 @@ function toggleTheme() {
   document.body.classList.toggle('light');
   localStorage.setItem('tl_theme', document.body.classList.contains('light') ? 'light' : 'dark');
   if (chartInstance) renderChart();
+  renderStats(cachedTrades);
 }
 
 // ── STATS CARDS ────────────────────────────────────────────────
@@ -212,7 +214,10 @@ function calcStats(trades) {
   const wr = trades.length ? +((wins.length / trades.length) * 100).toFixed(1) : 0;
   const longs = trades.filter(t => t.type === 'LONG').length;
   const shorts = trades.filter(t => t.type === 'SHORT').length;
-  return { net, pf, wr, longs, shorts, total: trades.length };
+  const avgWin = wins.length ? +(grossW / wins.length).toFixed(2) : 0;
+  const avgLoss = losses.length ? +(grossL / losses.length).toFixed(2) : 0;
+  const avgRR = (avgWin > 0 && avgLoss > 0) ? +(avgWin / avgLoss).toFixed(2) : null;
+  return { net, pf, wr, longs, shorts, total: trades.length, avgWin, avgLoss, avgRR };
 }
 
 function renderStats(trades) {
@@ -220,6 +225,8 @@ function renderStats(trades) {
   if (!el) return;
   const s = calcStats(trades);
   const netClass = s.net > 0 ? 'green' : s.net < 0 ? 'red' : 'neutral';
+  const rrClass = s.avgRR !== null ? (s.avgRR >= 1 ? 'green' : 'red') : 'neutral';
+  const rrDisplay = s.avgRR !== null ? s.avgRR + 'R' : '—';
   el.innerHTML = `
     <div class="stat-card">
       <div class="stat-label">Net PnL</div>
@@ -238,14 +245,66 @@ function renderStats(trades) {
       <div class="stat-value neutral">${s.total}</div>
     </div>
     <div class="stat-card">
-      <div class="stat-label">Long</div>
-      <div class="stat-value" style="color:var(--accent2)">${s.longs}</div>
+      <div class="stat-label">Avg Win</div>
+      <div class="stat-value green">${s.avgWin > 0 ? fmt(s.avgWin) : '—'}</div>
     </div>
     <div class="stat-card">
-      <div class="stat-label">Short</div>
-      <div class="stat-value" style="color:var(--red)">${s.shorts}</div>
+      <div class="stat-label">Avg Loss</div>
+      <div class="stat-value red">${s.avgLoss > 0 ? fmt(-s.avgLoss) : '—'}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Avg R:R</div>
+      <div class="stat-value ${rrClass}">${rrDisplay}</div>
+    </div>
+    <div class="stat-card donut-card">
+      <div class="stat-label">Long vs Short</div>
+      <canvas id="ls-donut" width="88" height="88"></canvas>
     </div>
   `;
+  renderLSDonut(s.longs, s.shorts);
+}
+
+function renderLSDonut(longs, shorts) {
+  const canvas = document.getElementById('ls-donut');
+  if (!canvas || typeof Chart === 'undefined') return;
+  if (lsChartInstance) { lsChartInstance.destroy(); lsChartInstance = null; }
+  const total = longs + shorts;
+  const isLight = document.body.classList.contains('light');
+  lsChartInstance = new Chart(canvas, {
+    type: 'doughnut',
+    data: {
+      labels: [`Long: ${longs}`, `Short: ${shorts}`],
+      datasets: [{
+        data: total === 0 ? [1, 1] : [longs || 0.001, shorts || 0.001],
+        backgroundColor: total === 0
+          ? ['rgba(255,255,255,0.07)', 'rgba(255,255,255,0.07)']
+          : ['#4ade80', '#f87171'],
+        borderWidth: 0,
+        hoverOffset: 6,
+      }],
+    },
+    options: {
+      cutout: '68%',
+      responsive: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          enabled: total > 0,
+          backgroundColor: isLight ? '#fff' : '#1a1d27',
+          borderColor: isLight ? '#dde0eb' : '#252836',
+          borderWidth: 1,
+          titleColor: isLight ? '#111' : '#e8eaf0',
+          bodyColor: isLight ? '#4b5563' : '#8891aa',
+          padding: 10,
+          displayColors: true,
+          callbacks: {
+            title: () => '',
+            label: ctx => `  ${ctx.label} trades`,
+          },
+        },
+      },
+    },
+  });
 }
 
 // ── JOURNAL / CALENDAR ─────────────────────────────────────────
