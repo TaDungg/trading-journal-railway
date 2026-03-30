@@ -756,7 +756,7 @@ function handleImageUpload(file) {
       const canvas = document.createElement('canvas');
       canvas.width = w; canvas.height = h;
       canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      currentTradeImage = canvas.toDataURL('image/jpeg', QUALITY);
+      currentTradeImage = canvas.toDataURL('image/webp', QUALITY);
       showImagePreview(currentTradeImage);
     };
     img.src = e.target.result;
