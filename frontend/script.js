@@ -27,6 +27,7 @@ let cachedTrades = [];
 let accounts = [];
 let activeAccountId = null;
 let currentTradeImage = null;
+let currentTradeBlob = null;
 
 // ── TOKEN HELPERS ──────────────────────────────────────────────
 function getToken() { return localStorage.getItem('tl_token'); }
@@ -851,6 +852,9 @@ function handleImageUpload(file) {
       const canvas = document.createElement('canvas');
       canvas.width = w; canvas.height = h;
       canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.toBlob(blob => {
+        currentTradeBlob = blob;
+      }, 'image/webp', QUALITY);
       currentTradeImage = canvas.toDataURL('image/webp', QUALITY);
       showImagePreview(currentTradeImage);
     };
@@ -896,6 +900,7 @@ function showImagePreview(src) {
 
 function clearTradeImage() {
   currentTradeImage = null;
+  currentTradeBlob = null;
   const fileInput = document.getElementById('f-image');
   if (fileInput) fileInput.value = '';
   const zone = document.getElementById('img-dropzone');
@@ -969,18 +974,33 @@ async function saveTrade() {
   const acctChks = document.querySelectorAll('.trade-acct-chk:checked');
   const account_ids = Array.from(acctChks).map(c => parseInt(c.value));
 
-  const image_data = currentTradeImage || null;
-
   if (!date || isNaN(pnl)) { alert('Please fill in Date and PnL.'); return; }
 
-  const entry_price = 100;
-  const exit_price = type === 'LONG' ? +(100 + pnl).toFixed(4) : +(100 - pnl).toFixed(4);
-  const position_size = 1;
+  const saveBtn = document.querySelector('#trade-modal .modal-footer .btn-primary');
+  const ogSaveBtnText = saveBtn ? saveBtn.textContent : 'Save Trade';
+  if (saveBtn) { saveBtn.textContent = 'Uploading Image...'; saveBtn.style.opacity = '0.7'; saveBtn.style.pointerEvents = 'none'; }
 
   try {
+    let finalImageUrl = currentTradeImage || null;
+
+    if (currentTradeBlob) {
+      const uploadConf = await apiFetch('/api/upload-url');
+      const res = await fetch(uploadConf.uploadUrl, {
+        method: 'PUT',
+        body: currentTradeBlob,
+        headers: { 'Content-Type': 'image/webp' }
+      });
+      if (!res.ok) throw new Error('Cloud storage upload failed.');
+      finalImageUrl = uploadConf.imageUrl;
+    }
+
+    const entry_price = 100;
+    const exit_price = type === 'LONG' ? +(100 + pnl).toFixed(4) : +(100 - pnl).toFixed(4);
+    const position_size = 1;
+
     const body = {
       date, type, entry_price, exit_price, position_size,
-      grade, notes, account_ids, mental, initial_risk, image_data
+      grade, notes, account_ids, mental, initial_risk, image_data: finalImageUrl
     };
     if (editingId) {
       await apiFetch(`/api/trades/${editingId}`, { method: 'PUT', body: JSON.stringify(body) });
@@ -991,6 +1011,8 @@ async function saveTrade() {
     await refresh();
   } catch (err) {
     alert('Failed to save trade: ' + err.message);
+  } finally {
+    if (saveBtn) { saveBtn.textContent = ogSaveBtnText; saveBtn.style.opacity = '1'; saveBtn.style.pointerEvents = 'auto'; }
   }
 }
 

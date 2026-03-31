@@ -10,6 +10,8 @@ const { Pool } = require('pg');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 require('dotenv').config();
 
 const app = express();
@@ -27,6 +29,16 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production'
     ? { rejectUnauthorized: false }
     : false,
+});
+
+// ── CLOUDFLARE R2 CONFIG ──────────────────────────────────────────
+const s3 = new S3Client({
+  region: 'auto',
+  endpoint: process.env.R2_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+  },
 });
 
 // ── AUTH MIDDLEWARE ─────────────────────────────────────────────
@@ -83,6 +95,28 @@ app.post('/api/auth/login', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message || 'Server error', detail: err.detail || null, code: err.code || null });
+  }
+});
+
+// ── UPLOAD ROUTES ────────────────────────────────────────────────
+app.get('/api/upload-url', authMiddleware, async (req, res) => {
+  try {
+    const filename = `user_${req.userId}_${Date.now()}_${Math.random().toString(36).substring(7)}.webp`;
+    const bucketName = process.env.R2_BUCKET_NAME;
+
+    const command = new PutObjectCommand({
+      Bucket: bucketName,
+      Key: filename,
+      ContentType: 'image/webp',
+    });
+
+    const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 60 });
+    const imageUrl = `${process.env.R2_PUBLIC_URL}/${filename}`;
+
+    res.json({ uploadUrl, imageUrl });
+  } catch (err) {
+    console.error('Error generating pre-signed URL:', err);
+    res.status(500).json({ error: 'Failed to generate upload URL' });
   }
 });
 
