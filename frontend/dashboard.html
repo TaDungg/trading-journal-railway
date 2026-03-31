@@ -136,11 +136,9 @@
       <div class="trade-modal-layout">
         <!-- LEFT: Image Panel -->
         <div class="trade-img-panel">
-          <div class="img-dropzone" id="img-dropzone"
-            onclick="document.getElementById('f-image').click()"
+          <div class="img-dropzone" id="img-dropzone" onclick="document.getElementById('f-image').click()"
             ondragover="event.preventDefault();this.classList.add('dragover')"
-            ondragleave="this.classList.remove('dragover')"
-            ondrop="handleImageDrop(event)">
+            ondragleave="this.classList.remove('dragover')" ondrop="handleImageDrop(event)">
             <div class="img-dropzone-placeholder" id="img-placeholder">
               <span class="img-dropzone-icon">📷</span>
               <p>Click or drag to upload<br>your chart screenshot</p>
@@ -180,11 +178,12 @@
           <div class="form-row">
             <label>Mental</label>
             <div class="mood-picker">
-              <button class="mood-btn" data-mood="angry"      onclick="setMood('angry')"      title="Angry">😡</button>
-              <button class="mood-btn" data-mood="frustrated" onclick="setMood('frustrated')" title="Frustrated">😤</button>
-              <button class="mood-btn" data-mood="neutral"    onclick="setMood('neutral')"    title="Neutral">😐</button>
-              <button class="mood-btn" data-mood="sad"        onclick="setMood('sad')"        title="Sad">😢</button>
-              <button class="mood-btn" data-mood="happy"      onclick="setMood('happy')"      title="Happy">😊</button>
+              <button class="mood-btn" data-mood="angry" onclick="setMood('angry')" title="Angry">😡</button>
+              <button class="mood-btn" data-mood="frustrated" onclick="setMood('frustrated')"
+                title="Frustrated">😤</button>
+              <button class="mood-btn" data-mood="neutral" onclick="setMood('neutral')" title="Neutral">😐</button>
+              <button class="mood-btn" data-mood="sad" onclick="setMood('sad')" title="Sad">😢</button>
+              <button class="mood-btn" data-mood="happy" onclick="setMood('happy')" title="Happy">😊</button>
             </div>
             <input type="hidden" id="f-mental" value="" />
           </div>
@@ -192,9 +191,9 @@
             <label>Grade</label>
             <div class="grade-picker">
               <button class="grade-btn" data-grade="A+" onclick="setGrade('A+')">A+</button>
-              <button class="grade-btn" data-grade="A"  onclick="setGrade('A')">A</button>
-              <button class="grade-btn" data-grade="B"  onclick="setGrade('B')">B</button>
-              <button class="grade-btn" data-grade="C"  onclick="setGrade('C')">C</button>
+              <button class="grade-btn" data-grade="A" onclick="setGrade('A')">A</button>
+              <button class="grade-btn" data-grade="B" onclick="setGrade('B')">B</button>
+              <button class="grade-btn" data-grade="C" onclick="setGrade('C')">C</button>
             </div>
             <input type="hidden" id="f-grade" value="" />
           </div>
@@ -227,8 +226,10 @@
         <div class="form-row">
           <label>Type</label>
           <div class="type-toggle">
-            <button class="type-btn acct-type-btn active" data-val="live" onclick="setAccountType('live')">💼 Live</button>
-            <button class="type-btn acct-type-btn" data-val="prop" onclick="setAccountType('prop')">🏆 Prop Firm</button>
+            <button class="type-btn acct-type-btn active" data-val="live" onclick="setAccountType('live')">💼
+              Live</button>
+            <button class="type-btn acct-type-btn" data-val="prop" onclick="setAccountType('prop')">🏆 Prop
+              Firm</button>
           </div>
           <input type="hidden" id="acct-type" value="live" />
         </div>
@@ -265,5 +266,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="script.js"></script>
 </body>
+
+</html>
 
 </html>

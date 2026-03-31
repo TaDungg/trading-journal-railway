@@ -196,7 +196,7 @@ async function loadTrades(from, to) {
     let path = '/api/trades';
     const params = [];
     if (from) params.push(`from=${from}`);
-    if (to)   params.push(`to=${to}`);
+    if (to) params.push(`to=${to}`);
     if (activeAccountId !== null) params.push(`account_id=${activeAccountId}`);
     if (params.length) path += '?' + params.join('&');
     cachedTrades = await apiFetch(path);
@@ -451,14 +451,14 @@ function renderEdgePanel(trades, stats) {
 
   const dailyPnls = Object.values(dayPnl);
   const bestDay = dailyPnls.length ? Math.max(...dailyPnls, 0) : 0;
-  
+
   let consistency = 0;
   if (stats.net > 0 && bestDay > 0) {
     consistency = (bestDay / stats.net) * 100;
   }
-  
+
   consistencyEl.innerHTML = stats.net > 0 ? `${consistency.toFixed(1)}<span>%</span>` : '--<span>%</span>';
-  
+
   // Color the consistency based on prop firm strictness (e.g. <30% is great, >50% is bad)
   if (stats.net > 0) {
     consistencyEl.style.color = consistency < 30 ? 'var(--green)' : consistency > 50 ? 'var(--red)' : 'var(--text)';
@@ -594,7 +594,8 @@ function buildCalendar(trades) {
       <div class="cal-day-num">${dayNum}</div>
       ${ts.length ? `<div class="cal-pnl ${pnl >= 0 ? 'pos' : 'neg'}">${fmt(pnl)}</div><div class="cal-trade-count">${ts.length} trade${ts.length > 1 ? 's' : ''}</div>` : ''}
     `;
-    if (ts.length) cell.addEventListener('click', () => openDayModal(dayNum, ts));
+    const clickedDay = dayNum;
+    if (ts.length) cell.addEventListener('click', () => openDayModal(clickedDay, ts));
     grid.appendChild(cell);
     col++;
     if (col % 7 === 0) { appendWeekSummary(grid, weekPnl); weekPnl = 0; }
@@ -629,7 +630,7 @@ function openDayModal(day, trades) {
       <td>${t.grade ? `<span class="grade-badge g${t.grade.replace('+', 'p')}">${t.grade}</span>` : '—'}</td>
       <td style="color:var(--text3);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.notes || '—'}</td>
       <td>
-        <button class="action-btn" onclick="closeDayModal();openTradeModal('${t.id}')">✏</button>
+        <button class="action-btn" onclick="closeDayModal();openTradeModal('${t.id}')">👁</button>
         <button class="action-btn del" onclick="deleteTrade('${t.id}')">✕</button>
       </td>
     </tr>
@@ -750,7 +751,7 @@ function renderAllTrades(trades) {
       <td>${t.grade ? `<span class="grade-badge g${t.grade.replace('+', 'p')}">${t.grade}</span>` : '—'}</td>
       <td style="color:var(--text3);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.notes || '—'}</td>
       <td>
-        <button class="action-btn" onclick="openTradeModal('${t.id}')">✏</button>
+        <button class="action-btn" onclick="openTradeModal('${t.id}')">👁</button>
         <button class="action-btn del" onclick="deleteTrade('${t.id}')">✕</button>
       </td>
     </tr>
@@ -839,7 +840,7 @@ function renderTradeAccountPicker() {
 // ── IMAGE UPLOAD ───────────────────────────────────────────────
 function handleImageUpload(file) {
   if (!file || !file.type.startsWith('image/')) return;
-  const MAX_W = 1920, MAX_H = 1080, QUALITY = 0.8;
+  const MAX_W = 2560, MAX_H = 1440, QUALITY = 1.0;
   const reader = new FileReader();
   reader.onload = e => {
     const img = new Image();
@@ -870,12 +871,25 @@ function showImagePreview(src) {
   const placeholder = document.getElementById('img-placeholder');
   const clearBtn = document.getElementById('img-clear-btn');
   if (!zone) return;
-  const existing = zone.querySelector('.trade-img-preview');
-  if (existing) existing.remove();
+  
+  // Remove existing previews and backgrounds
+  const existingPreview = zone.querySelector('.trade-img-preview');
+  if (existingPreview) existingPreview.remove();
+  const existingBg = zone.querySelector('.trade-img-bg');
+  if (existingBg) existingBg.remove();
+
+  // Create blurred background
+  const bgImg = document.createElement('img');
+  bgImg.className = 'trade-img-bg';
+  bgImg.src = src;
+  zone.appendChild(bgImg);
+
+  // Create main preview image
   const imgEl = document.createElement('img');
   imgEl.className = 'trade-img-preview';
   imgEl.src = src;
   zone.appendChild(imgEl);
+
   if (placeholder) placeholder.style.display = 'none';
   if (clearBtn) clearBtn.classList.remove('hidden');
 }
@@ -887,7 +901,12 @@ function clearTradeImage() {
   const zone = document.getElementById('img-dropzone');
   const placeholder = document.getElementById('img-placeholder');
   const clearBtn = document.getElementById('img-clear-btn');
-  if (zone) { const ex = zone.querySelector('.trade-img-preview'); if (ex) ex.remove(); }
+  if (zone) { 
+    const ex = zone.querySelector('.trade-img-preview'); 
+    if (ex) ex.remove(); 
+    const bg = zone.querySelector('.trade-img-bg');
+    if (bg) bg.remove();
+  }
   if (placeholder) placeholder.style.display = '';
   if (clearBtn) clearBtn.classList.add('hidden');
 }
@@ -938,29 +957,31 @@ function closeTradeModal() {
 }
 
 async function saveTrade() {
-  const date        = document.getElementById('f-date').value;
-  const type        = document.getElementById('f-type').value;
-  const pnl         = parseFloat(document.getElementById('f-pnl').value);
-  const grade       = document.getElementById('f-grade').value || null;
-  const notes       = document.getElementById('f-notes').value.trim();
-  const mental      = document.getElementById('f-mental')?.value || null;
-  const riskVal     = document.getElementById('f-risk')?.value;
+  const date = document.getElementById('f-date').value;
+  const type = document.getElementById('f-type').value;
+  const pnl = parseFloat(document.getElementById('f-pnl').value);
+  const grade = document.getElementById('f-grade').value || null;
+  const notes = document.getElementById('f-notes').value.trim();
+  const mental = document.getElementById('f-mental')?.value || null;
+  const riskVal = document.getElementById('f-risk')?.value;
   const initial_risk = riskVal ? parseFloat(riskVal) : null;
-  
-  const acctChks    = document.querySelectorAll('.trade-acct-chk:checked');
+
+  const acctChks = document.querySelectorAll('.trade-acct-chk:checked');
   const account_ids = Array.from(acctChks).map(c => parseInt(c.value));
-  
-  const image_data  = currentTradeImage || null;
+
+  const image_data = currentTradeImage || null;
 
   if (!date || isNaN(pnl)) { alert('Please fill in Date and PnL.'); return; }
 
-  const entry_price  = 100;
-  const exit_price   = type === 'LONG' ? +(100 + pnl).toFixed(4) : +(100 - pnl).toFixed(4);
+  const entry_price = 100;
+  const exit_price = type === 'LONG' ? +(100 + pnl).toFixed(4) : +(100 - pnl).toFixed(4);
   const position_size = 1;
 
   try {
-    const body = { date, type, entry_price, exit_price, position_size,
-                   grade, notes, account_ids, mental, initial_risk, image_data };
+    const body = {
+      date, type, entry_price, exit_price, position_size,
+      grade, notes, account_ids, mental, initial_risk, image_data
+    };
     if (editingId) {
       await apiFetch(`/api/trades/${editingId}`, { method: 'PUT', body: JSON.stringify(body) });
     } else {

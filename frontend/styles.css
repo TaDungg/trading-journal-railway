@@ -344,7 +344,7 @@ body {
   background: var(--bg2);
   border: 1px solid var(--border2);
   border-radius: 10px;
-  box-shadow: 0 8px 32px rgba(0,0,0,.45);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, .45);
   z-index: 500;
   overflow: hidden;
   animation: fadeIn .15s ease;
@@ -387,9 +387,17 @@ body {
   flex-shrink: 0;
 }
 
-.acct-item-dot.live { background: var(--accent2); }
-.acct-item-dot.prop { background: #f59e0b; }
-.acct-item-dot.all  { background: var(--text3); }
+.acct-item-dot.live {
+  background: var(--accent2);
+}
+
+.acct-item-dot.prop {
+  background: #f59e0b;
+}
+
+.acct-item-dot.all {
+  background: var(--text3);
+}
 
 .acct-item-info {
   flex: 1;
@@ -878,9 +886,9 @@ body {
 
 /* ── TRADE MODAL (wide two-panel) ── */
 .modal-box.trade-modal {
-  width: min(68vw, 1060px);
+  width: min(85vw, 1480px);
   max-width: 96vw;
-  max-height: 90vh;
+  max-height: 92vh;
   display: flex;
   flex-direction: column;
 }
@@ -897,13 +905,15 @@ body {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   padding: 16px 16px 16px 20px;
   border-right: 1px solid var(--border);
   gap: 10px;
 }
 
 .img-dropzone {
-  flex: 1;
+  width: 100%;
+  aspect-ratio: 16 / 9;
   border: 2px dashed var(--border2);
   border-radius: 12px;
   display: flex;
@@ -913,7 +923,6 @@ body {
   transition: border-color .2s, background .2s;
   position: relative;
   overflow: hidden;
-  min-height: 280px;
 }
 
 .img-dropzone:hover,
@@ -953,14 +962,25 @@ body {
   letter-spacing: .04em;
 }
 
+.trade-img-bg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  inset: 0;
+  filter: blur(16px) brightness(0.6);
+  z-index: 0;
+}
+
 .trade-img-preview {
   width: 100%;
   height: 100%;
   object-fit: contain;
   position: absolute;
   inset: 0;
-  background: var(--bg);
+  background: transparent;
   border-radius: 10px;
+  z-index: 1;
 }
 
 .img-clear-btn {
